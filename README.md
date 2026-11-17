@@ -46,6 +46,8 @@ Setup 관리자 암호 초기값은 `0000` 입니다.
 `Data\DB\YYYY\MM\HyosungData_YYYYMMDD.duckdb` — 하루 1파일, 1초 주기 자동 저장.
 DC Power 출력 중인 채널과, 챔버 운전 중(또는 Power 출력 중)의 챔버 값을 저장하고 Result 메뉴에서 Power별·기간별로 조회·CSV 내보내기 합니다.
 
+Test Power, Run Function, 챔버 운전을 시작할 때 저장 여부를 한 번 확인합니다. **저장 없이 실행**을 선택하면 장비 운전은 동일하게 진행하지만 해당 운전의 `run_id`와 측정 샘플은 DuckDB에 기록하지 않습니다.
+
 ## 실제 장비 연결
 
 Setup › 통신: NEX1200 COM1, USP COM2(주소 1~6), '시뮬레이터로 동작' 해제 → 재시작.

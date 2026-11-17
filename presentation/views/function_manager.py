@@ -155,8 +155,30 @@ class FunctionManager(QDialog):
         self.search.textChanged.connect(self.fill_flist)
         rl.addWidget(self.search)
         self.t_func = _tbl(["Name", "Step", "총 시간"])
+        self.t_func.setObjectName("functionSelectTable")
+        self.t_func.verticalHeader().setDefaultSectionSize(36)
+        self.t_func.setStyleSheet(f"""
+            QTableWidget#functionSelectTable {{
+                background: {T.ROW}; border: 2px solid {T.BRD}; outline: none;
+            }}
+            QTableWidget#functionSelectTable::item {{
+                padding: 5px 8px; border-bottom: 1px solid {T.BRD};
+            }}
+            QTableWidget#functionSelectTable::item:hover:!selected {{
+                background: #2B3745; color: #FFFFFF;
+            }}
+            QTableWidget#functionSelectTable::item:selected {{
+                background: #33475C; color: {T.TXT}; font-weight: bold;
+                border-top: 1px solid {T.BLU}; border-bottom: 1px solid {T.BLU};
+            }}
+        """)
+        self.t_func.itemSelectionChanged.connect(self._show_selected_function)
         self.t_func.cellDoubleClicked.connect(self.edit_from_list)
         rl.addWidget(self.t_func, 1)
+        self.lbl_selected_func = QLabel()
+        self.lbl_selected_func.setMinimumHeight(38)
+        rl.addWidget(self.lbl_selected_func)
+        self._show_selected_function()
         rl.addWidget(label("할당 조건", sub=True))
         g = QGridLayout()
         self.ocp = QDoubleSpinBox(decimals=2, maximum=self.cfg.psu_i_max, suffix=" A")
@@ -210,7 +232,24 @@ class FunctionManager(QDialog):
 
     def selected_func(self):
         r = self.t_func.currentRow()
-        return self.t_func.item(r, 0).text() if r >= 0 else None
+        item = self.t_func.item(r, 0) if r >= 0 else None
+        return item.text() if item is not None else None
+
+    def _show_selected_function(self):
+        """채널에 할당될 Function을 목록 밖에서도 명확하게 표시한다."""
+        fn = self.selected_func()
+        if fn:
+            self.lbl_selected_func.setText(f"선택됨  ·  할당할 Function:  {fn}")
+            self.lbl_selected_func.setStyleSheet(
+                f"background:{T.CARD}; color:{T.TXT}; border:1px solid {T.BLU}; "
+                "border-radius:3px; padding:5px 10px; font-size:10pt; font-weight:bold;"
+            )
+        else:
+            self.lbl_selected_func.setText("할당할 Function을 목록에서 선택하세요.")
+            self.lbl_selected_func.setStyleSheet(
+                f"background:{T.INP}; color:{T.SUB}; border:1px dashed {T.BRD}; "
+                "border-radius:3px; padding:5px 10px;"
+            )
 
     def do_assign(self):
         chs, fn = self.checked(), self.selected_func()
@@ -509,6 +548,7 @@ class FunctionManager(QDialog):
             self.select_function(target, force=True)
 
     def fill_flist(self, *_):
+        selected = self.selected_func() if hasattr(self, "t_func") else None
         q = self.search.text().strip().lower()
         rows = []
         for n in self.store.names():
@@ -520,6 +560,12 @@ class FunctionManager(QDialog):
         for r, vals in enumerate(rows):
             for c, val in enumerate(vals):
                 self.t_func.setItem(r, c, _it(val))
+        if selected:
+            for r in range(self.t_func.rowCount()):
+                if self.t_func.item(r, 0).text() == selected:
+                    self.t_func.selectRow(r)
+                    break
+        self._show_selected_function()
 
     def edit_from_list(self, r, _c):
         name = self.t_func.item(r, 0).text()

@@ -146,6 +146,9 @@ d.grab().save(f"{OUT}/06_testpower.png"); d.hide()
 # ---- Function manager
 fm = function_manager.FunctionManager(win, hub, cfg); fm.resize(1760, 960); fm.show(); pump(0.3)
 fm.t_ch.cellClicked.emit(3, 2); fm.t_func.selectRow(0); fm.lim.set(0.5, 35.0)
+selected_fn = fm.selected_func()
+ok(selected_fn and selected_fn in fm.lbl_selected_func.text() and fm.t_func.objectName() == "functionSelectTable",
+   f"Function 목록 선택 강조 및 할당 대상 표시 ({selected_fn})")
 fm.do_assign(); pump(1.3)
 ok(hub.ch[4].assign and hub.ch[4].i_max == 35.0, f"할당 + 전류 기준 P04 ({hub.ch[4].assign and hub.ch[4].assign.func})")
 record_answers.append(False); fm.do_start(); pump(1.0)
