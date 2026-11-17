@@ -1,0 +1,12 @@
+[project]
+name = "hyosung-hmi"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "duckdb>=1.1",
+    "pyqtgraph>=0.13",
+    "pyserial>=3.5",
+    "pyside6>=6.6",
+]
