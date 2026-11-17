@@ -238,6 +238,7 @@ class PowerCard(QFrame):
     """B 영역 Power 상태 카드 — 채널명·상태 / 전압·전류 큰 숫자 / OCP·STEP·CYC·경과."""
     clicked = Signal(int)
     double_clicked = Signal(int)
+    right_clicked = Signal(int, object)       # ch, global QPoint
 
     def __init__(self, ch: int, parent=None):
         super().__init__(parent)
@@ -337,11 +338,15 @@ class PowerCard(QFrame):
                 self.setStyleSheet("")
 
     def mousePressEvent(self, e):
-        self.clicked.emit(self.ch)
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit(self.ch)
+        elif e.button() == Qt.RightButton:
+            self.right_clicked.emit(self.ch, e.globalPosition().toPoint())
         super().mousePressEvent(e)
 
     def mouseDoubleClickEvent(self, e):
-        self.double_clicked.emit(self.ch)
+        if e.button() == Qt.LeftButton:
+            self.double_clicked.emit(self.ch)
 
 
 class ValueBox(QFrame):

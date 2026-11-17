@@ -555,6 +555,49 @@ class DeviceHub(QObject):
         self.log.write("USER", f"할당 P{chs} ← {func_name} OCP {ocp} Cycle {cycles} Log {log_s}s")
         if i_limits is not False and done:
             self.set_current_limits(done, *i_limits)
+        if done:
+            first = self.ch[done[0]]
+            preset = {"name": func_name, "ocp": float(ocp), "cycles": int(cycles), "log_s": float(log_s),
+                      "i_limits": [first.i_min, first.i_max]}
+            recent = [p for p in (self.cfg.recent_function_assignments or [])
+                      if isinstance(p, dict) and p.get("name") != func_name]
+            self.cfg.recent_function_assignments = [preset, *recent][:5]
+            try:
+                self.cfg.save()
+            except Exception as e:  # noqa
+                self.log.write("ERROR", f"최근 Function 저장 실패: {e}")
+
+    def recent_function_assignments(self, limit=5) -> list[dict]:
+        """최근 할당 설정. 이력이 부족하면 저장된 Function을 기본 설정으로 채운다."""
+        out, seen = [], set()
+        for raw in self.cfg.recent_function_assignments or []:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name", "")).strip()
+            if not name or name in seen or not self.functions.exists(name):
+                continue
+            out.append({"name": name, "ocp": float(raw.get("ocp", self.cfg.psu_i_max)),
+                        "cycles": max(1, int(raw.get("cycles", 1))), "log_s": float(raw.get("log_s", 1.0)),
+                        "i_limits": raw.get("i_limits", [None, None])})
+            seen.add(name)
+            if len(out) >= limit:
+                return out
+        for name in self.functions.names():
+            if name in seen:
+                continue
+            out.append({"name": name, "ocp": float(self.cfg.psu_i_max), "cycles": 1, "log_s": 1.0,
+                        "i_limits": [None, None]})
+            if len(out) >= limit:
+                break
+        return out
+
+    def quick_assign(self, ch: int, preset: dict):
+        """메인 카드 우클릭에서 최근 설정으로 한 채널에 Function을 할당한다."""
+        lim = preset.get("i_limits", [None, None])
+        lim = tuple(lim[:2]) if isinstance(lim, (list, tuple)) and len(lim) >= 2 else (None, None)
+        self.assign([ch], preset["name"], preset.get("ocp", self.cfg.psu_i_max),
+                    preset.get("cycles", 1), preset.get("log_s", 1.0), i_limits=lim)
+        self.info.emit(f"P{ch:02d} ← {preset['name']} 빠른 할당 완료")
 
     # ---- 전류 기준 Min/Max (2026-11-13)
     def set_current_limits(self, chs, lo, hi):
@@ -590,11 +633,16 @@ class DeviceHub(QObject):
         self.info.emit("알람 전체 해제" + (f" — {len(cleared)}건" if cleared else ""))
 
     def unassign(self, chs):
+        done = []
         for i in chs:
             if not self.ch[i].run:
                 self.ch[i].assign = None
+                done.append(i)
                 if self.ch[i].status == "READY":
                     self.ch[i].status = "OFF"
+        if done:
+            self.log.write("USER", f"할당 해제 P{done}")
+            self.info.emit(f"{', '.join(f'P{i:02d}' for i in done)} Function 할당 해제")
 
     def start_func(self, chs, record: bool = True):
         for i in chs:

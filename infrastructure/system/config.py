@@ -69,6 +69,8 @@ class Config:
     #     출력 중 전류가 한 번이라도 범위를 벗어나면 AL-09 + 메인 카드 알람 (알람 전체 해제 전까지 유지)
     i_limits: dict = field(default_factory=dict)
     i_check_delay_s: float = 3.0       # 출력 ON·Step 전환 직후 이 시간 동안은 판정 안 함 (전류가 자리잡는 시간)
+    # 메인 Power 카드 우클릭의 최근 Function 빠른 할당 목록(최신 순, 최대 5개 사용)
+    recent_function_assignments: list[dict] = field(default_factory=list)
 
     # --- 저장 / 그래프  (data_dir\DB\연도\월\HyosungData_YYYYMMDD.duckdb — DuckDB 일별 파일, 1초 주기)
     data_dir: str = str(APP_DIR / "Data")

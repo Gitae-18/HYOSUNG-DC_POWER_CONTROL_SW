@@ -10,7 +10,7 @@ HOME = tempfile.mkdtemp(); os.environ["HYOSUNG_HMI_HOME"] = HOME
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 H = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."); sys.path.insert(0, H)
 D = HOME
-from PySide6.QtWidgets import QApplication, QFileDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QLabel
 from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
@@ -151,6 +151,17 @@ ok(selected_fn and selected_fn in fm.lbl_selected_func.text() and fm.t_func.obje
    f"Function 목록 선택 강조 및 할당 대상 표시 ({selected_fn})")
 fm.do_assign(); pump(1.3)
 ok(hub.ch[4].assign and hub.ch[4].i_max == 35.0, f"할당 + 전류 기준 P04 ({hub.ch[4].assign and hub.ch[4].assign.func})")
+recent = hub.recent_function_assignments(5)
+quick_menu = win._power_function_menu(4)
+menu_texts = [a.text() for a in quick_menu.actions()]
+menu_labels = [w.text() for w in quick_menu.findChildren(QLabel)]
+ok(recent and recent[0]["name"] == "Blocked rotor" and any("Blocked rotor" in t for t in menu_texts),
+   f"Power 카드 우클릭 최근 Function 목록 ({[p['name'] for p in recent]})")
+ok(any("P04" in t and "빠른 할당" in t for t in menu_labels) and "최근 할당한 Function" in menu_labels,
+   "우클릭 메뉴 제목 헤더와 최근 할당 섹션 구분")
+ok(any("할당 해제" in t for t in menu_texts), "할당된 Power 카드 우클릭 메뉴에 [할당 해제]")
+hub.quick_assign(5, recent[0]); ok(hub.ch[5].assign and hub.ch[5].assign.func == recent[0]["name"], "최근 Function 빠른 할당 P05")
+hub.unassign([5]); ok(hub.ch[5].assign is None, "Power 카드 메뉴 할당 해제")
 record_answers.append(False); fm.do_start(); pump(1.0)
 ok(hub.ch[4].run is not None and not hub.ch[4].run.record and hub.data.run_id(4) is None,
    "Function [저장 없이 실행]은 운전하고 run_id는 생성 안 함")

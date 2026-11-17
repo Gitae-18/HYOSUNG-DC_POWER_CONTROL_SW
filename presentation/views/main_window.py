@@ -35,7 +35,7 @@ from datetime import datetime
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QStatusBar,
-                               QCheckBox, QFrame)
+                               QCheckBox, QFrame, QMenu, QWidgetAction)
 
 from presentation.styling import resources as R
 from presentation.styling import theme as T
@@ -107,6 +107,7 @@ class MainWindow(QMainWindow):
             c = PowerCard(i)
             c.clicked.connect(self.select_ch)
             c.double_clicked.connect(lambda ch: self.open_test_power(ch))
+            c.right_clicked.connect(self.show_power_function_menu)
             g.addWidget(c, (i - 1) // 3, (i - 1) % 3)
             self.cards[i] = c
         top.addWidget(pb, 2)
@@ -378,6 +379,74 @@ class MainWindow(QMainWindow):
             self.sel.add(ch)
         self.sync_chips()
         self.redraw()
+
+    def _power_function_menu(self, ch: int) -> QMenu:
+        """Power 카드 우클릭용 최근 Function 빠른 할당 메뉴."""
+        menu = QMenu(self)
+        menu.setMinimumWidth(300)
+        menu.setStyleSheet(f"""
+            QMenu {{ background:{T.PNL}; border:1px solid {T.BRD}; padding:4px; }}
+            QMenu::item {{ padding:7px 24px 7px 18px; border-radius:2px; }}
+            QMenu::item:selected {{ background:{T.SEL}; color:#FFFFFF; }}
+            QMenu::item:disabled {{ color:{T.DIM}; }}
+            QMenu::separator {{ height:1px; background:{T.BRD}; margin:5px 8px; }}
+        """)
+
+        def add_menu_label(text: str, header=False):
+            label_widget = QLabel(text)
+            label_widget.setMinimumWidth(270)
+            if header:
+                label_widget.setStyleSheet(
+                    f"background:{T.HDR}; color:{T.TXT}; border-bottom:2px solid {T.BLU}; "
+                    "padding:8px 10px; font-size:10.5pt; font-weight:bold;"
+                )
+            else:
+                label_widget.setStyleSheet(
+                    f"background:{T.PNL}; color:{T.SUB}; padding:4px 10px 2px 10px; "
+                    "font-size:9pt; font-weight:bold;"
+                )
+            widget_action = QWidgetAction(menu)
+            widget_action.setDefaultWidget(label_widget)
+            menu.addAction(widget_action)
+
+        data = self.snap["channels"][ch - 1] if self.snap else self.hub.snapshot()["channels"][ch - 1]
+        current = data.get("func") or ""
+        running = data.get("status") in ("RUN", "WAIT") and bool(current)
+
+        add_menu_label(f"P{ch:02d}  ·  Run Function 빠른 할당", header=True)
+        if current:
+            add_menu_label(f"현재 할당:  {current}")
+
+        recent = self.hub.recent_function_assignments(5)
+        if recent:
+            add_menu_label("최근 할당한 Function")
+            for preset in recent:
+                name = preset["name"]
+                action = menu.addAction(("✓  " if name == current else "   ") + name)
+                action.setEnabled(not running and name != current)
+                action.setStatusTip(
+                    f"OCP {preset['ocp']:.2f} A · Cycle {preset['cycles']} · {name}을 P{ch:02d}에 할당"
+                )
+                action.triggered.connect(
+                    lambda _=False, cc=ch, pp=dict(preset): self.hub.call(self.hub.quick_assign, cc, pp)
+                )
+        else:
+            empty = menu.addAction("저장된 Function 없음")
+            empty.setEnabled(False)
+
+        if current:
+            menu.addSeparator()
+            unassign = menu.addAction("할당 해제" + ("  (실행 중에는 불가)" if running else ""))
+            unassign.setEnabled(not running)
+            unassign.triggered.connect(lambda _=False, cc=ch: self.hub.call(self.hub.unassign, [cc]))
+
+        menu.addSeparator()
+        manage = menu.addAction("Run Function 관리 열기…")
+        manage.triggered.connect(self.open_function)
+        return menu
+
+    def show_power_function_menu(self, ch: int, global_pos):
+        self._power_function_menu(ch).exec(global_pos)
 
     toggle_graph_ch = select_ch          # 이전 이름 호환
 
