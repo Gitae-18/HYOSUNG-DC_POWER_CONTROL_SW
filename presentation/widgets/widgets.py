@@ -525,6 +525,29 @@ def confirm(parent, title, text, ok="확인", cancel="취소", warn=False) -> bo
     return m.clickedButton() is yes
 
 
+def ask_record(parent, title, text) -> bool | None:
+    """운전 시작 전 DB 기록 여부를 한 번 묻는다.
+
+    True = 저장하고 실행, False = 저장 없이 실행, None = 실행 취소.
+    """
+    m = QMessageBox(parent)
+    m.setWindowTitle(title)
+    m.setText(text)
+    m.setInformativeText("이번 운전의 측정 데이터를 DuckDB에 저장하시겠습니까?")
+    m.setIcon(QMessageBox.Question)
+    save = m.addButton("저장하고 실행", QMessageBox.AcceptRole)
+    no_save = m.addButton("저장 없이 실행", QMessageBox.DestructiveRole)
+    m.addButton("취소", QMessageBox.RejectRole)
+    m.setDefaultButton(save)
+    m.exec()
+    clicked = m.clickedButton()
+    if clicked is save:
+        return True
+    if clicked is no_save:
+        return False
+    return None
+
+
 def info(parent, title, text, warn=False):
     m = QMessageBox(parent)
     m.setWindowTitle(title)

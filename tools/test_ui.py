@@ -18,12 +18,17 @@ app = QApplication(sys.argv); app.setFont(QFont("Malgun Gothic" if sys.platform 
 from presentation.styling import resources as R, theme; R.apply_app_identity(app, "t"); app.setStyleSheet(theme.QSS.replace("'Malgun Gothic', ", ""))
 from presentation.widgets import widgets
 widgets_confirm_log = []
+record_answers = []
 def _confirm(parent, title, text, **k): widgets_confirm_log.append(title); return True
 def _info(parent, title, text, warn=False): widgets_confirm_log.append(("info", title, text[:80]))
-widgets.confirm = _confirm; widgets.info = _info
+def _ask_record(parent, title, text):
+    widgets_confirm_log.append(("record", title))
+    return record_answers.pop(0) if record_answers else True
+widgets.confirm = _confirm; widgets.info = _info; widgets.ask_record = _ask_record
 from presentation.views import main_window, dialogs, function_manager
 from presentation.widgets.widgets import checked_rows
-for m in (main_window, dialogs, function_manager): m.confirm = _confirm; m.info = _info
+for m in (main_window, dialogs, function_manager):
+    m.confirm = _confirm; m.info = _info; m.ask_record = _ask_record
 SAVE = {}
 QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: (SAVE["save"], ""))
 QFileDialog.getOpenFileName = staticmethod(lambda *a, **k: (SAVE["open"], ""))
@@ -129,6 +134,13 @@ pump(1.2); ok(d.chs() == [5], "1초 갱신 후에도 체크 유지")
 d.lim.set(1.0, 20.0); d.set_limits(); pump(1.2)
 ok(hub.ch[5].i_min == 1.0 and hub.ch[5].i_max == 20.0, "Test Power 기준 적용 P05")
 ok(cfg.i_limits.get("5") == [1.0, 20.0], "기준 config 저장")
+record_answers.append(False); prompts_before = len([x for x in widgets_confirm_log if isinstance(x, tuple) and x[0] == "record"])
+d.power(True); pump(1.3)
+prompts_after = len([x for x in widgets_confirm_log if isinstance(x, tuple) and x[0] == "record"])
+ok(prompts_after == prompts_before + 1 and hub.ch[5].manual and not hub.ch[5].manual_record,
+   "Power On 전에 저장 여부를 1회 확인하고 [저장 없이 실행]")
+ok(hub.data.run_id(5) is None, "저장 안 함 운전은 run_id 생성 안 함")
+d.power(False); pump(0.3)
 d.tbl.cellClicked.emit(0, 2)
 d.grab().save(f"{OUT}/06_testpower.png"); d.hide()
 # ---- Function manager
@@ -136,6 +148,10 @@ fm = function_manager.FunctionManager(win, hub, cfg); fm.resize(1760, 960); fm.s
 fm.t_ch.cellClicked.emit(3, 2); fm.t_func.selectRow(0); fm.lim.set(0.5, 35.0)
 fm.do_assign(); pump(1.3)
 ok(hub.ch[4].assign and hub.ch[4].i_max == 35.0, f"할당 + 전류 기준 P04 ({hub.ch[4].assign and hub.ch[4].assign.func})")
+record_answers.append(False); fm.do_start(); pump(1.0)
+ok(hub.ch[4].run is not None and not hub.ch[4].run.record and hub.data.run_id(4) is None,
+   "Function [저장 없이 실행]은 운전하고 run_id는 생성 안 함")
+fm.do_stop(); pump(0.5)
 fm.grab().save(f"{OUT}/07_function_assign.png")
 fm.tabs.setCurrentIndex(1); pump(0.3)
 names = fm.store.names(); fm.lst.setCurrentRow(names.index("DENSO HTHE")); pump(0.2)

@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, Q
 from presentation.styling import resources as R
 from presentation.styling import theme as T
 from presentation.graphs.graphs import new_plot, GraphTools
-from presentation.widgets.widgets import Panel, BlackToolbar, PowerCard, ValueBox, DeviationBar, button, label, confirm
+from presentation.widgets.widgets import Panel, BlackToolbar, PowerCard, ValueBox, DeviationBar, button, label, confirm, ask_record
 
 MAXPTS = 24 * 3600
 
@@ -629,8 +629,9 @@ class MainWindow(QMainWindow):
         if not c:
             return
         mode = "정치" if c["mode"] == "fix" else f"프로그램 (패턴 {c['pattern']})"
-        if confirm(self, "챔버 실행", f"챔버 운전을 시작합니다.\n\n운전 방식: {mode}\n설정 온도: {c['sp_t']:.1f} ℃\n설정 습도: {c['sp_h']:.1f} %"):
-            self.hub.call(self.hub.chamber_run)
+        record = ask_record(self, "챔버 실행 및 저장", f"챔버 운전을 시작합니다.\n\n운전 방식: {mode}\n설정 온도: {c['sp_t']:.1f} ℃\n설정 습도: {c['sp_h']:.1f} %")
+        if record is not None:
+            self.hub.call(self.hub.chamber_run, record=record)
 
     def chamber_stop(self):
         running = [d for d in self.snap["channels"] if d["status"] in ("RUN", "WAIT") and d["func"]] if self.snap else []

@@ -71,3 +71,27 @@ hub.start_func([3])
 for _ in range(12):
     hub._tick(1.0)
 print("Wait test status:", hub.ch[3].status, "alarms:", hub.alarms)
+
+# 저장 여부 선택: 운전은 하되 run_id/샘플을 만들지 않음
+hub.functions.save(f)
+hub.assign([4], "T1", 61.0, 1, 1.0)
+hub.start_func([4], record=False)
+hub._tick(1.0); hub.data.flush()
+assert hub.ch[4].run is not None and hub.data.run_id(4) is None
+assert not [r for r in ResultQuery(cfg.data_dir, hub.data).runs() if r["ch"] == 4]
+print("No-save Function: running=True, run_id=None, DB session=0")
+
+# 챔버 단독 운전도 저장 안 함/저장을 시작 시 선택한 값대로 적용
+hub2, cfg2 = mk("record-choice")
+hub2.chamber_run(record=False)
+hub2.cr = hub2.chamber.read()
+hub2._log_and_emit(datetime.now()); hub2.data.flush()
+count0 = hub2.data.cursor().execute("SELECT count(*) FROM chamber_sample").fetchone()[0]
+hub2.chamber_stop(); hub2.chamber_run(record=True)
+hub2.cr = hub2.chamber.read()
+hub2._log_and_emit(datetime.now()); hub2.data.flush()
+count1 = hub2.data.cursor().execute("SELECT count(*) FROM chamber_sample").fetchone()[0]
+assert count0 == 0 and count1 == 1
+print("No-save Chamber: 0 rows / Save Chamber: 1 row")
+hub2.data.close()
+hub.data.close()

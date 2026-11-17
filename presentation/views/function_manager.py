@@ -33,7 +33,7 @@ from presentation.graphs.graphs import new_plot, GraphTools
 from presentation.styling import theme as T
 from domain.models.function_model import (Function, Segment, Step, hms, parse_hms, write_profile, read_profile, unique_name,
                             PROFILE_EXT)
-from presentation.widgets.widgets import (Panel, button, label, confirm, info, check_item, checked_rows, set_all_checked,
+from presentation.widgets.widgets import (Panel, button, label, confirm, info, ask_record, check_item, checked_rows, set_all_checked,
                      setup_check_column, TimeDelegate)
 
 # 표 열 번호 (2026-11-13: No 다음에 체크박스 열)
@@ -246,8 +246,10 @@ class FunctionManager(QDialog):
         if not ready:
             return info(self, "실행", "실행할 수 있는 채널이 없습니다 (Function 미할당 또는 실행 중).")
         lines = "\n".join(f"P{c:02d} · {s['channels'][c - 1]['func']}" for c in ready)
-        if confirm(self, "Function 실행", f"다음 채널의 Function 을 실행합니다.\n\n{lines}\n\n챔버는 먼저 시작한 Function 이 제어합니다.", ok="실행"):
-            self.hub.call(self.hub.start_func, ready)
+        record = ask_record(self, "Function 실행 및 저장",
+                            f"다음 채널의 Function 을 실행합니다.\n\n{lines}\n\n챔버는 먼저 시작한 Function 이 제어합니다.")
+        if record is not None:
+            self.hub.call(self.hub.start_func, ready, record=record)
 
     def do_stop(self):
         chs = self.checked()

@@ -53,6 +53,7 @@ class Run:
     t0: float = field(default_factory=time.monotonic)
     last_log: float = 0.0
     owner: bool = False
+    record: bool = True
 
 
 @dataclass
@@ -70,6 +71,7 @@ class Channel:
     run: Run | None = None
     manual: bool = False
     manual_t0: float = 0.0
+    manual_record: bool = True
     last_log: float = 0.0
     i_min: float | None = None      # 전류 기준 (A), None = 사용 안 함
     i_max: float | None = None
@@ -130,6 +132,7 @@ class DeviceHub(QObject):
             if int(k) in self.ch:
                 self.ch[int(k)].i_min, self.ch[int(k)].i_max = lo, hi
         self.cr: ChamberReading | None = None
+        self.chamber_record = False             # 챔버 단독 운전의 DB 저장 여부(운전 시작 팝업에서 결정)
         self.c_fails = 0
         self.c_err = ""
         self.active_alarms: set[str] = set()
@@ -275,6 +278,7 @@ class DeviceHub(QObject):
                 # 프로그램 밖(장비 앞면 등)에서 켜진 출력도 저장되도록 수동운전으로 기록 시작 / 꺼지면 종료
                 if r.on and not c.run and not c.manual and c.status != "OCP":
                     c.manual, c.manual_t0, c.status = True, time.monotonic(), "RUN"
+                    c.manual_record = True       # 장비 전면에서 켠 출력은 기존 정책대로 자동 기록
                     c.i_hold = time.monotonic() + self.cfg.i_check_delay_s
                     self.data.start_run(i, None, cfg_info={"cv": c.cv, "cc": c.cc, "detected": "장비 출력 ON 감지"})
                     self.log.write("POWER", f"P{i:02d} 출력 ON 감지 → 수동운전 기록 시작")
@@ -333,9 +337,10 @@ class DeviceHub(QObject):
         #   챔버: NEX1200 운전 중이거나 DC Power 가 하나라도 출력 중이면 1행 (아무것도 동작하지 않으면 저장 안 함)
         ts = t.replace(microsecond=0)
         active = [c for c in self.ch.values() if c.run or c.manual]
-        if self.cr and self.c_fails < 3 and (self.cr.running or active):
+        recorded = [c for c in active if (c.run and c.run.record) or (c.manual and c.manual_record)]
+        if self.cr and self.c_fails < 3 and ((self.cr.running and self.chamber_record) or recorded):
             self.data.chamber(ts, self.cr)
-        for c in active:
+        for c in recorded:
             if c.fails >= 3:
                 continue                                   # 통신 두절 중에는 값이 없으므로 저장하지 않음
             vw = c.view()
@@ -480,7 +485,7 @@ class DeviceHub(QObject):
             self.ch[i].i_hold = time.monotonic() + self.cfg.i_check_delay_s
         self.log.write("POWER", f"Set Values P{chs}: {v:.2f} V / {a:.2f} A")
 
-    def test_power_on(self, chs, on: bool):
+    def test_power_on(self, chs, on: bool, record: bool = True):
         done, skipped, failed = [], [], []
         for i in chs:
             c = self.ch[i]
@@ -494,7 +499,9 @@ class DeviceHub(QObject):
                     c.i_hold = time.monotonic() + self.cfg.i_check_delay_s
                     if not c.manual:
                         c.manual, c.manual_t0 = True, time.monotonic()
-                        self.data.start_run(i, None, cfg_info={"cv": c.cv, "cc": c.cc})
+                        c.manual_record = record
+                        if record:
+                            self.data.start_run(i, None, cfg_info={"cv": c.cv, "cc": c.cc})
                     c.status = "RUN"
                 else:
                     self.psu[i].output(False)
@@ -502,7 +509,8 @@ class DeviceHub(QObject):
                 done.append(f"P{i:02d}")
             except Exception as e:  # noqa
                 failed.append(f"P{i:02d}({e})")
-        self.log.write("POWER", f"Test Power {'On' if on else 'Off'} {done} 건너뜀 {skipped} 실패 {failed}")
+        record_text = "DB 저장" if record else "DB 저장 안 함"
+        self.log.write("POWER", f"Test Power {'On' if on else 'Off'} {done} {record_text if on else ''} 건너뜀 {skipped} 실패 {failed}")
         msg = f"{', '.join(done) or '-'} 출력 {'ON' if on else 'OFF'} 완료"
         if skipped:
             msg += f" · {', '.join(skipped)} 는 Function 실행 중이라 제외"
@@ -510,7 +518,7 @@ class DeviceHub(QObject):
             msg += f" · 실패 {', '.join(failed)}"
         self.info.emit(msg)
 
-    def chamber_apply(self, mode, t, h, pattern=1, timed=False, dev=0.0, secs=0, run_after=False):
+    def chamber_apply(self, mode, t, h, pattern=1, timed=False, dev=0.0, secs=0, run_after=False, record=True):
         self.chamber.set_mode(mode, pattern)
         if mode == "fix":
             self.chamber.set_rate(0, 0)
@@ -518,14 +526,16 @@ class DeviceHub(QObject):
             self.chamber.set_timed(timed, dev, secs)
         self.log.write("CHAMBER", f"설정 {mode} {t}℃/{h}% pattern={pattern}")
         if run_after:
-            self.chamber_run()
+            self.chamber_run(record=record)
 
-    def chamber_run(self):
+    def chamber_run(self, record: bool = True):
+        self.chamber_record = record
         self.chamber.run()
-        self.log.write("CHAMBER", "RUN")
+        self.log.write("CHAMBER", f"RUN · {'DB 저장' if record else 'DB 저장 안 함'}")
 
     def chamber_stop(self, stop_power=False):
         self.chamber.stop()
+        self.chamber_record = False
         if stop_power:
             for c in self.ch.values():
                 if c.run:
@@ -586,7 +596,7 @@ class DeviceHub(QObject):
                 if self.ch[i].status == "READY":
                     self.ch[i].status = "OFF"
 
-    def start_func(self, chs):
+    def start_func(self, chs, record: bool = True):
         for i in chs:
             c = self.ch[i]
             if not c.assign or c.run or c.status == "ERR":
@@ -601,14 +611,16 @@ class DeviceHub(QObject):
             if self.cfg.psu_hw_ocp and not self.cfg.simulate:
                 self._safe(self.psu[i].set_ocp, c.assign.ocp)      # 장비 OCP 도 함께 (1초 주기 감시보다 빠름)
             owner = not any(o.run and o.run.owner for o in self.ch.values())
-            c.run = Run(f, c.assign, owner=owner)
+            c.run = Run(f, c.assign, owner=owner, record=record)
             c.last_log = 0
-            self.data.start_run(i, f.name, snapshot=f.to_dict(),
-                                cfg_info={"ocp": c.assign.ocp, "cycles": c.assign.cycles, "log_s": c.assign.log_s,
-                                          "step_policy": self.cfg.step_policy, "chamber_owner": owner})
+            if record:
+                self.data.start_run(i, f.name, snapshot=f.to_dict(),
+                                    cfg_info={"ocp": c.assign.ocp, "cycles": c.assign.cycles, "log_s": c.assign.log_s,
+                                              "step_policy": self.cfg.step_policy, "chamber_owner": owner})
             self._enter_segment(c)
             c.status = "RUN"
-            self.log.write("POWER", f"P{i:02d} Function '{f.name}' 시작 (챔버 제어권 {'O' if owner else 'X'})")
+            self.log.write("POWER", f"P{i:02d} Function '{f.name}' 시작 (챔버 제어권 {'O' if owner else 'X'}) · "
+                                    f"{'DB 저장' if record else 'DB 저장 안 함'}")
 
     # ================================================================ 통신 시험 (Setup › 통신 시험)
     def comm_exec(self, target: str, cmd: str):

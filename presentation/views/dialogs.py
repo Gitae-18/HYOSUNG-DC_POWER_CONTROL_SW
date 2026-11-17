@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, Q
 from presentation.styling import theme as T
 from infrastructure.persistence.datalog import ResultQuery
 from domain.models.function_model import parse_hms
-from presentation.widgets.widgets import Panel, button, label, confirm, info, set_state, check_item, checked_rows, setup_check_column, TimeEdit
+from presentation.widgets.widgets import Panel, button, label, confirm, info, ask_record, set_state, check_item, checked_rows, setup_check_column, TimeEdit
 from presentation.graphs.graphs import new_plot, GraphTools
 
 
@@ -217,8 +217,12 @@ class TestPowerDialog(QDialog):
         if not chs:
             return info(self, "Power", "채널을 체크하세요.")
         names = ", ".join(f"P{c:02d}" for c in chs)
-        if confirm(self, "Power " + ("On" if on else "Off"), f"{names} 출력을 {'켭니다' if on else '끕니다'}.", warn=on):
-            self.hub.call(self.hub.test_power_on, chs, on)
+        if on:
+            record = ask_record(self, "Power On 및 저장", f"{names} 출력을 켭니다.")
+            if record is not None:
+                self.hub.call(self.hub.test_power_on, chs, True, record=record)
+        elif confirm(self, "Power Off", f"{names} 출력을 끕니다."):
+            self.hub.call(self.hub.test_power_on, chs, False)
 
     def done(self, r):
         for sig, slot in ((self.hub.updated, self.refresh), (self.hub.info, self._info)):
@@ -371,6 +375,8 @@ class ChamberDialog(QDialog):
 
     def apply(self, run_after):
         warns = self.check_warn()
+        starting = run_after and not self.running
+        record = True
         if self.rb_fix.isChecked():
             try:
                 secs = parse_hms(self.run_time.text()) or 0
@@ -380,11 +386,19 @@ class ChamberDialog(QDialog):
                 return info(self, "입력 오류", "운전 시간은 최대 9999:59:59 입니다.", warn=True)
             if warns and not confirm(self, "챔버 사양 경고", "\n".join(warns) + "\n\n그래도 진행할까요?", ok="진행", warn=True):
                 return
+            if starting:
+                record = ask_record(self, "챔버 실행 및 저장", "설정값을 적용하고 챔버 운전을 시작합니다.")
+                if record is None:
+                    return
             humi = None if self.no_h.isChecked() else self.sp_h.value()
             self.hub.call(self.hub.chamber_apply, "fix", self.sp_t.value(), humi, 1, self.timed.isChecked(),
-                          self.dev.value(), secs, run_after and not self.running)
+                          self.dev.value(), secs, starting, record=record)
         else:
-            self.hub.call(self.hub.chamber_apply, "program", 0, None, self.pattern.value(), run_after=run_after and not self.running)
+            if starting:
+                record = ask_record(self, "챔버 실행 및 저장", "설정값을 적용하고 챔버 운전을 시작합니다.")
+                if record is None:
+                    return
+            self.hub.call(self.hub.chamber_apply, "program", 0, None, self.pattern.value(), run_after=starting, record=record)
         self.accept()
 
 
